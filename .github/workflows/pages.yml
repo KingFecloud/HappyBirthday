@@ -1,0 +1,81 @@
+name: Publish main and preview
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-main-and-preview
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Read main branch
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          path: source-main
+          persist-credentials: false
+
+      - name: Read dev branch
+        uses: actions/checkout@v6
+        with:
+          ref: dev
+          path: source-dev
+          persist-credentials: false
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Assemble both versions
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p public-site/preview
+
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='/preview/' \
+            source-main/ public-site/
+
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='/preview/' \
+            source-dev/ public-site/preview/
+
+          test -s public-site/index.html
+          test -s public-site/preview/index.html
+
+      - name: Upload website
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: public-site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy website
+        id: deployment
+        uses: actions/deploy-pages@v4
